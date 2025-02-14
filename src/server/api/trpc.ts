@@ -6,11 +6,15 @@
  * TL;DR - This is where all the tRPC server stuff is created and plugged in. The pieces you will
  * need to use are documented accordingly near the end.
  */
-import { initTRPC } from "@trpc/server";
+import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import { ZodError } from "zod";
+import { parse, serialize, type SerializeOptions } from "cookie";
 
 import { db } from "@/server/db";
+import { jwt } from "@/lib/jwt";
+import { users } from "../db/schema";
+import { eq } from "drizzle-orm";
 
 /**
  * 1. CONTEXT
@@ -24,9 +28,37 @@ import { db } from "@/server/db";
  *
  * @see https://trpc.io/docs/server/context
  */
-export const createTRPCContext = async (opts: { headers: Headers }) => {
+export const createTRPCContext = async (opts: {
+	headers: Headers;
+	res: { headers: Headers };
+}) => {
+	const cookies = {
+		get: (name?: string) => {
+			const cookiesHeader = opts.headers?.get("Cookie");
+			if (!cookiesHeader) return null;
+			const cookies = parse(cookiesHeader);
+			return name ? cookies[name] ?? null : cookies;
+		},
+		has: (name: string) => {
+			const cookiesHeader = opts.headers?.get("Cookie");
+			if (!cookiesHeader) return false;
+			const cookies = parse(cookiesHeader);
+			return name in cookies;
+		},
+		set: (name: string, value: string, options?: SerializeOptions) => {
+			opts.res.headers.append("Set-Cookie", serialize(name, value, options));
+		},
+		clear: (name: string) => {
+			opts.res.headers.append(
+				"Set-Cookie",
+				serialize(name, "", { maxAge: -1 })
+			);
+		},
+	};
+
 	return {
 		db,
+		cookies,
 		...opts,
 	};
 };
@@ -104,3 +136,51 @@ const timingMiddleware = t.middleware(async ({ next, path }) => {
  * are logged in.
  */
 export const publicProcedure = t.procedure.use(timingMiddleware);
+
+/**
+ * Protected (authenticated) procedure
+ *
+ * This is the base piece you use to build new queries and mutations on your tRPC API. It guarantees
+ * that a user querying is authorized, and you can access user session data.
+ */
+export const protectedProcedure = t.procedure
+	.use(timingMiddleware)
+	.use(async ({ ctx, next }) => {
+		const cookie = ctx.cookies.get("session");
+
+		if (!cookie) {
+			throw new TRPCError({ code: "UNAUTHORIZED" });
+		}
+
+		try {
+			const session = (await jwt.verify(cookie as string)) as unknown as {
+				id: (typeof users.$inferSelect)["id"];
+				iat: number;
+				exp: number;
+			};
+
+			const [user] = await db
+				.select()
+				.from(users)
+				.where(eq(users.id, session.id));
+
+			// The user does not exist or the session is invalid
+			if (user === undefined) throw new TRPCError({ code: "UNAUTHORIZED" });
+
+			// The user password is updated after the session is created
+			if (
+				user.passwordUpdatedAt !== null &&
+				session.iat < user.passwordUpdatedAt.getTime() / 1000
+			) {
+				throw new TRPCError({ code: "UNAUTHORIZED" });
+			}
+
+			return next({
+				ctx: {
+					user: user,
+				},
+			});
+		} catch {
+			throw new TRPCError({ code: "UNAUTHORIZED" });
+		}
+	});
