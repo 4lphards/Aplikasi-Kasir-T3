@@ -13,16 +13,21 @@ export function LatestPost() {
     onSuccess: async () => {
       await utils.post.invalidate();
       setName("");
-    },
+    }
   });
 
   return (
     <div className="w-full max-w-xs">
-      {latestPost ? (
-        <p className="truncate">Your most recent post: {latestPost.name}</p>
-      ) : (
-        <p>You have no posts yet.</p>
-      )}
+      {latestPost
+        ? (
+            <p className="truncate">
+              Your most recent post:
+              {latestPost.name}
+            </p>
+          )
+        : (
+            <p>You have no posts yet.</p>
+          )}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -34,7 +39,7 @@ export function LatestPost() {
           type="text"
           placeholder="Title"
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={e => setName(e.target.value)}
           className="w-full rounded-full px-4 py-2 text-black"
         />
         <button

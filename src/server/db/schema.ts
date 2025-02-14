@@ -7,7 +7,7 @@ import {
   integer,
   pgTableCreator,
   timestamp,
-  varchar,
+  varchar
 } from "drizzle-orm/pg-core";
 
 /**
@@ -16,7 +16,7 @@ import {
  *
  * @see https://orm.drizzle.team/docs/goodies#multi-project-schema
  */
-export const createTable = pgTableCreator((name) => `web-cashier-t3_${name}`);
+export const createTable = pgTableCreator(name => `web-cashier-t3_${name}`);
 
 export const posts = createTable(
   "post",
@@ -28,9 +28,9 @@ export const posts = createTable(
       .notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).$onUpdate(
       () => new Date()
-    ),
+    )
   },
-  (example) => ({
-    nameIndex: index("name_idx").on(example.name),
+  example => ({
+    nameIndex: index("name_idx").on(example.name)
   })
 );
