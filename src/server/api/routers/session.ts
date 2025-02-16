@@ -27,7 +27,7 @@ export const sessionRouter = createTRPCRouter({
 					message: "Invalid credentials",
 				});
 
-			ctx.cookies.set("session", jwt.sign({ id: user.id }), {
+			await ctx.cookies.set("session", jwt.sign({ id: user.id }), {
 				httpOnly: true,
 			});
 
@@ -41,5 +41,12 @@ export const sessionRouter = createTRPCRouter({
 		const { password, ...user } = ctx.user;
 
 		return user;
+	}),
+	remove: protectedProcedure.mutation(async ({ ctx }) => {
+		await ctx.cookies.set("session", "", {
+			httpOnly: true,
+		});
+
+		return true;
 	}),
 });

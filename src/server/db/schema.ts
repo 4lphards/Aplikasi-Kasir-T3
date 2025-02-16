@@ -7,7 +7,11 @@ import {
 	timestamp,
 	varchar,
 } from "drizzle-orm/pg-core";
-import { createInsertSchema, createSelectSchema } from "drizzle-zod";
+import {
+	createInsertSchema,
+	createSelectSchema,
+	createUpdateSchema,
+} from "drizzle-zod";
 
 export const userLevels = pgEnum("user_level", ["admin", "user"]);
 
@@ -84,24 +88,29 @@ export const saleDetails = pgTable("sale_detail", {
 export const userSchema = {
 	insert: createInsertSchema(users),
 	select: createSelectSchema(users),
+	update: createUpdateSchema(users),
 };
 
 export const productSchema = {
 	insert: createInsertSchema(products),
 	select: createSelectSchema(products),
+	update: createUpdateSchema(products),
 };
 
 export const customerSchema = {
 	insert: createInsertSchema(customers),
 	select: createSelectSchema(customers),
+	update: createUpdateSchema(customers),
 };
 
 export const saleSchema = {
 	insert: createInsertSchema(sales),
 	select: createSelectSchema(sales),
+	update: createUpdateSchema(sales),
 };
 
 export const saleDetailSchema = {
 	insert: createInsertSchema(saleDetails),
 	select: createSelectSchema(saleDetails),
+	update: createUpdateSchema(saleDetails),
 };

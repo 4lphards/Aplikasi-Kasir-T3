@@ -172,6 +172,9 @@ export const protectedProcedure = t.procedure
 				user.passwordUpdatedAt !== null &&
 				session.iat < user.passwordUpdatedAt.getTime() / 1000
 			) {
+				await ctx.cookies.set("session", "", {
+					httpOnly: true,
+				});
 				throw new TRPCError({ code: "UNAUTHORIZED" });
 			}
 

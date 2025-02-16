@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 
 const Home = () => {
   const router = useRouter();
-
+    
   const handleLoginRedirect = () => {
     router.push('/login');
   };
