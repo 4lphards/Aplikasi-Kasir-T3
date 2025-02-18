@@ -29,38 +29,38 @@ import { eq } from "drizzle-orm";
  * @see https://trpc.io/docs/server/context
  */
 export const createTRPCContext = async (opts: {
-	headers: Headers;
-	res: { headers: Headers };
+  headers: Headers
+  res: { headers: Headers }
 }) => {
-	const cookies = {
-		get: (name?: string) => {
-			const cookiesHeader = opts.headers?.get("Cookie");
-			if (!cookiesHeader) return null;
-			const cookies = parse(cookiesHeader);
-			return name ? cookies[name] ?? null : cookies;
-		},
-		has: (name: string) => {
-			const cookiesHeader = opts.headers?.get("Cookie");
-			if (!cookiesHeader) return false;
-			const cookies = parse(cookiesHeader);
-			return name in cookies;
-		},
-		set: (name: string, value: string, options?: SerializeOptions) => {
-			opts.res.headers.append("Set-Cookie", serialize(name, value, options));
-		},
-		clear: (name: string) => {
-			opts.res.headers.append(
-				"Set-Cookie",
-				serialize(name, "", { maxAge: -1 })
-			);
-		},
-	};
+  const cookies = {
+    get: (name?: string) => {
+      const cookiesHeader = opts.headers?.get("Cookie");
+      if (!cookiesHeader) return null;
+      const cookies = parse(cookiesHeader);
+      return name ? cookies[name] ?? null : cookies;
+    },
+    has: (name: string) => {
+      const cookiesHeader = opts.headers?.get("Cookie");
+      if (!cookiesHeader) return false;
+      const cookies = parse(cookiesHeader);
+      return name in cookies;
+    },
+    set: (name: string, value: string, options?: SerializeOptions) => {
+      opts.res.headers.append("Set-Cookie", serialize(name, value, options));
+    },
+    clear: (name: string) => {
+      opts.res.headers.append(
+        "Set-Cookie",
+        serialize(name, "", { maxAge: -1 })
+      );
+    }
+  };
 
-	return {
-		db,
-		cookies,
-		...opts,
-	};
+  return {
+    db,
+    cookies,
+    ...opts
+  };
 };
 
 /**
@@ -71,17 +71,16 @@ export const createTRPCContext = async (opts: {
  * errors on the backend.
  */
 const t = initTRPC.context<typeof createTRPCContext>().create({
-	transformer: superjson,
-	errorFormatter({ shape, error }) {
-		return {
-			...shape,
-			data: {
-				...shape.data,
-				zodError:
-					error.cause instanceof ZodError ? error.cause.flatten() : null,
-			},
-		};
-	},
+  transformer: superjson,
+  errorFormatter({ shape, error }) {
+    return {
+      ...shape,
+      data: {
+        ...shape.data,
+        zodError: error.cause instanceof ZodError ? error.cause.flatten() : null
+      }
+    };
+  }
 });
 
 /**
@@ -112,20 +111,20 @@ export const createTRPCRouter = t.router;
  * network latency that would occur in production but not in local development.
  */
 const timingMiddleware = t.middleware(async ({ next, path }) => {
-	const start = Date.now();
+  const start = Date.now();
 
-	if (t._config.isDev) {
-		// artificial delay in dev
-		const waitMs = Math.floor(Math.random() * 400) + 100;
-		await new Promise((resolve) => setTimeout(resolve, waitMs));
-	}
+  if (t._config.isDev) {
+    // artificial delay in dev
+    const waitMs = Math.floor(Math.random() * 400) + 100;
+    await new Promise(resolve => setTimeout(resolve, waitMs));
+  }
 
-	const result = await next();
+  const result = await next();
 
-	const end = Date.now();
-	console.log(`[TRPC] ${path} took ${end - start}ms to execute`);
+  const end = Date.now();
+  console.log(`[TRPC] ${path} took ${end - start}ms to execute`);
 
-	return result;
+  return result;
 });
 
 /**
@@ -144,46 +143,47 @@ export const publicProcedure = t.procedure.use(timingMiddleware);
  * that a user querying is authorized, and you can access user session data.
  */
 export const protectedProcedure = t.procedure
-	.use(timingMiddleware)
-	.use(async ({ ctx, next }) => {
-		const cookie = ctx.cookies.get("session");
+  .use(timingMiddleware)
+  .use(async ({ ctx, next }) => {
+    const cookie = ctx.cookies.get("session");
 
-		if (!cookie) {
-			throw new TRPCError({ code: "UNAUTHORIZED" });
-		}
+    if (!cookie) {
+      throw new TRPCError({ code: "UNAUTHORIZED" });
+    }
 
-		try {
-			const session = (await jwt.verify(cookie as string)) as unknown as {
-				id: (typeof users.$inferSelect)["id"];
-				iat: number;
-				exp: number;
-			};
+    try {
+      const session = (await jwt.verify(cookie as string)) as unknown as {
+        id: (typeof users.$inferSelect)["id"]
+        iat: number
+        exp: number
+      };
 
-			const [user] = await db
-				.select()
-				.from(users)
-				.where(eq(users.id, session.id));
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, session.id));
 
-			// The user does not exist or the session is invalid
-			if (user === undefined) throw new TRPCError({ code: "UNAUTHORIZED" });
+      // The user does not exist or the session is invalid
+      if (user === undefined) throw new TRPCError({ code: "UNAUTHORIZED" });
 
-			// The user password is updated after the session is created
-			if (
-				user.passwordUpdatedAt !== null &&
-				session.iat < user.passwordUpdatedAt.getTime() / 1000
-			) {
-				await ctx.cookies.set("session", "", {
-					httpOnly: true,
-				});
-				throw new TRPCError({ code: "UNAUTHORIZED" });
-			}
+      // The user password is updated after the session is created
+      if (
+        user.passwordUpdatedAt !== null
+        && session.iat < user.passwordUpdatedAt.getTime() / 1000
+      ) {
+        ctx.cookies.set("session", "", {
+          httpOnly: true
+        });
+        throw new TRPCError({ code: "UNAUTHORIZED" });
+      }
 
-			return next({
-				ctx: {
-					user: user,
-				},
-			});
-		} catch {
-			throw new TRPCError({ code: "UNAUTHORIZED" });
-		}
-	});
+      return next({
+        ctx: {
+          user: user
+        }
+      });
+    }
+    catch {
+      throw new TRPCError({ code: "UNAUTHORIZED" });
+    }
+  });

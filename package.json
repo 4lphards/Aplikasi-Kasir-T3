@@ -36,6 +36,7 @@
     "react": "^19.0.0",
     "react-chartjs-2": "^5.3.0",
     "react-dom": "^19.0.0",
+    "react-modal": "^3.16.3",
     "server-only": "^0.0.1",
     "sonner": "^1.7.4",
     "superjson": "^2.2.2",
@@ -47,6 +48,7 @@
     "@types/node": "^22.13.4",
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
+    "@types/react-modal": "^3.16.3",
     "@typescript-eslint/eslint-plugin": "^8.24.0",
     "@typescript-eslint/parser": "^8.24.0",
     "drizzle-kit": "^0.30.4",
@@ -63,7 +65,9 @@
   "packageManager": "pnpm@10.4.0",
   "pnpm": {
     "onlyBuiltDependencies": [
-      "argon2"
+      "argon2",
+      "esbuild",
+      "sharp"
     ]
   }
 }
