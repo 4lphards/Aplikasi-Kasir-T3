@@ -14,7 +14,7 @@ export const customerRouter = createTRPCRouter({
       if (!input.name) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Name is required"
+          message: "Nama diperlukan!"
         });
       }
 
@@ -27,7 +27,7 @@ export const customerRouter = createTRPCRouter({
       if (!input.id) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Customer ID is required"
+          message: "ID pelanggan diperlukan!"
         });
       }
 
@@ -40,7 +40,7 @@ export const customerRouter = createTRPCRouter({
       if (!input.id) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Customer ID is required"
+          message: "ID pelanggan diperlukan!"
         });
       }
 

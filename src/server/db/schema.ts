@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
-  decimal,
+  boolean,
   integer,
   pgEnum,
   pgTable,
@@ -18,25 +18,27 @@ export const userLevels = pgEnum("user_level", ["admin", "user"]);
 export const users = pgTable("user", {
   id: integer().primaryKey().generatedByDefaultAsIdentity(),
   name: varchar({ length: 256 }),
-  username: varchar({ length: 50 }).unique().notNull(),
+  username: varchar({ length: 50 }).unique(),
   password: varchar({ length: 256 }).notNull(),
   level: userLevels().default("user"),
   passwordUpdatedAt: timestamp({ withTimezone: true }),
   createdAt: timestamp({ withTimezone: true })
     .default(sql`CURRENT_TIMESTAMP`)
     .notNull(),
-  updatedAt: timestamp({ withTimezone: true }).$onUpdate(() => new Date())
+  updatedAt: timestamp({ withTimezone: true }).$onUpdate(() => new Date()),
+  active: boolean().default(true)
 });
 
 export const products = pgTable("product", {
   id: integer().primaryKey().generatedByDefaultAsIdentity(),
   name: varchar({ length: 256 }).notNull(),
-  price: decimal({ precision: 10, scale: 2 }).default("0"),
-  stock: decimal({ precision: 10, scale: 2 }).default("0"),
+  price: integer().default(0),
+  stock: integer().default(0),
   createdAt: timestamp({ withTimezone: true })
     .default(sql`CURRENT_TIMESTAMP`)
     .notNull(),
-  updatedAt: timestamp({ withTimezone: true }).$onUpdate(() => new Date())
+  updatedAt: timestamp({ withTimezone: true }).$onUpdate(() => new Date()),
+  active: boolean().default(true)
 });
 
 export const customers = pgTable("customer", {
@@ -52,7 +54,7 @@ export const customers = pgTable("customer", {
 
 export const sales = pgTable("sale", {
   id: integer().primaryKey().generatedByDefaultAsIdentity(),
-  totalPrice: decimal({ precision: 10, scale: 2 }),
+  totalPrice: integer(),
   userId: integer().references(() => users.id, {
     onDelete: "restrict",
     onUpdate: "cascade"
@@ -77,8 +79,8 @@ export const saleDetails = pgTable("sale_detail", {
     onDelete: "restrict",
     onUpdate: "cascade"
   }),
-  quantity: decimal({ precision: 10, scale: 2 }),
-  price: decimal({ precision: 10, scale: 2 }),
+  quantity: integer(),
+  price: integer(),
   createdAt: timestamp({ withTimezone: true })
     .default(sql`CURRENT_TIMESTAMP`)
     .notNull(),

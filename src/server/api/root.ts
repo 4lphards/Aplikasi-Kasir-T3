@@ -3,8 +3,8 @@ import { sessionRouter } from "./routers/session";
 import { productRouter } from "./routers/product";
 import { userRouter } from "./routers/user";
 import { customerRouter } from "./routers/customer";
-import { saleRouter } from "./routers/sales";
-import { saleDetailsRouter } from "./routers/saleDetails";
+import { saleRouter } from "./routers/sale";
+import { saleDetailsRouter } from "./routers/saleDetail";
 
 /**
  * This is the primary router for your server.

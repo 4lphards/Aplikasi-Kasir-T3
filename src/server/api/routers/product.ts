@@ -1,11 +1,12 @@
 import { products, productSchema } from "@/server/db/schema";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
+import { z } from "zod";
 
 export const productRouter = createTRPCRouter({
   fetchAll: protectedProcedure.query(async ({ ctx }) => {
-    return ctx.db.select().from(products);
+    return ctx.db.select().from(products).where(eq(products.active, true));
   }),
   fetchById: protectedProcedure
     .input(productSchema.select.pick({ id: true }))
@@ -13,19 +14,19 @@ export const productRouter = createTRPCRouter({
       if (!input.id) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Product ID is required"
+          message: "ID Produk diperlukan"
         });
       }
 
       const [product] = await ctx.db
         .select()
         .from(products)
-        .where(eq(products.id, input.id));
+        .where(and(eq(products.id, input.id), eq(products.active, true)));
 
       if (product === undefined) {
         throw new TRPCError({
           code: "NOT_FOUND",
-          message: "Product not found"
+          message: "Produk tidak ditemukan"
         });
       }
 
@@ -37,7 +38,7 @@ export const productRouter = createTRPCRouter({
       if (!input.name) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Name is required"
+          message: "Nama produk diperlukan"
         });
       }
 
@@ -50,11 +51,30 @@ export const productRouter = createTRPCRouter({
       if (!input.id) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Product ID is required"
+          message: "ID Produk diperlukan"
         });
       }
 
-      await ctx.db.delete(products).where(eq(products.id, input.id));
+      await ctx.db.update(products).set({
+        active: false
+      }).where(eq(products.id, input.id));
+
+      return true;
+    }),
+  deleteBulk: protectedProcedure
+    .input(z.array(productSchema.select.pick({ id: true })))
+    .mutation(async ({ input, ctx }) => {
+      if (input.length === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "ID Produk diperlukan"
+        });
+      }
+
+      await ctx.db.update(products).set({
+        active: false
+      }).where(inArray(products.id, input.map(i => i.id)));
+
       return true;
     }),
   update: protectedProcedure
@@ -63,7 +83,7 @@ export const productRouter = createTRPCRouter({
       if (!input.id) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Product ID is required"
+          message: "ID Produk diperlukan"
         });
       }
 

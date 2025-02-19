@@ -2,18 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/trpc/react";
-import { formatPrice } from "@/utils/numberFormat";
-import { useRouter } from "next/navigation";
+import { numberFormat } from "@/utils/numberFormat";
 import { toast } from "sonner";
 import { AddCustomerModal } from "@/components/modals/AddCustomerModal";
 import { EditCustomerModal } from "@/components/modals/EditCustomerModal";
+import { PaymentConfirmationModal } from "@/components/modals/PaymentConfirmationModal";
 import { type z } from "zod";
 import { type customerSchema } from "@/server/db/schema";
 import { type productSchema } from "@/server/db/schema";
+import { useRouter } from "next/navigation";
+import { formatToRupiah, parseRupiahToNumber } from "@/utils/currencyFormat";
 
 export default function CashierDashboard() {
   const router = useRouter();
-
   const { data: products, refetch } = api.products.fetchAll.useQuery(undefined, {
     retry: false
   });
@@ -29,6 +30,10 @@ export default function CashierDashboard() {
     else if (user.isLoading) {
       return;
     }
+  }, [user, router]);
+
+  const todayStats = api.sales.fetchSalesNow.useQuery(undefined, {
+    retry: false
   });
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -38,6 +43,7 @@ export default function CashierDashboard() {
   const [selectedCustomer, setSelectedCustomer] = useState<z.infer<typeof customerSchema.select> | null>(null);
   const [isAddCustomerModalOpen, setIsAddCustomerModalOpen] = useState(false);
   const [isEditCustomerModalOpen, setIsEditCustomerModalOpen] = useState(false);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
   const handleAddProduct = (productId: number) => {
     const product = products?.find(p => p.id === productId);
@@ -45,10 +51,9 @@ export default function CashierDashboard() {
       const currentStock = Number(product.stock);
       const existingProduct = addedProducts.find(p => p.id === productId);
 
-      // If product already exists, check if adding one more would exceed stock
       if (existingProduct) {
         if (existingProduct.quantity >= currentStock) {
-          toast.error(`Not enough stock available. Current stock: ${currentStock}`);
+          toast.error(`Stok tidak mencukupi. Stok saat ini: ${currentStock}`);
           return;
         }
         setAddedProducts(prevProducts =>
@@ -58,9 +63,8 @@ export default function CashierDashboard() {
         );
       }
       else {
-        // For new products, check if there's any stock available
         if (currentStock <= 0) {
-          toast.error("Product is out of stock!");
+          toast.error("Stok produk habis!");
           return;
         }
         setAddedProducts(prevProducts => [...prevProducts, { ...product, quantity: 1 }]);
@@ -75,31 +79,25 @@ export default function CashierDashboard() {
   };
 
   const handleDecreaseQuantity = (productId: number) => {
-    setAddedProducts(prevProducts =>
-      prevProducts.map(p =>
+    setAddedProducts((prevProducts) => {
+      const updatedProducts = prevProducts.map(p =>
         p.id === productId
-          ? { ...p, quantity: p.quantity > 1 ? p.quantity - 1 : 1 }
+          ? { ...p, quantity: p.quantity - 1 }
           : p
-      )
-    );
+      );
+      return updatedProducts.filter(p => p.quantity > 0);
+    });
   };
 
   const handleClearCart = () => {
     if (addedProducts.length === 0) {
-      toast.error("Cart is already empty");
+      toast.error("Keranjang sudah kosong");
       return;
     }
     setAddedProducts([]);
     setPayment("");
-    toast.success("Cart cleared");
+    toast.success("Keranjang berhasil dikosongkan");
   };
-
-  const handleLogout = api.session.remove.useMutation({
-    onSuccess: () => {
-      router.push("/login");
-      toast.success("Logout successful");
-    }
-  });
 
   const filteredProducts = products?.filter(product =>
     product.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -117,7 +115,9 @@ export default function CashierDashboard() {
     return sum + (Number(product.price) * product.quantity);
   }, 0);
 
-  const cashback = payment ? Number(payment) - total : 0;
+  const cashback = payment
+    ? Number(parseRupiahToNumber(payment)) - total
+    : 0;
 
   const sortedProducts = filteredProducts?.reduce<{
     inStock: typeof filteredProducts
@@ -142,7 +142,7 @@ export default function CashierDashboard() {
 
   const createSale = api.sales.create.useMutation({
     onSuccess: async () => {
-      toast.success("Payment completed successfully");
+      toast.success("Pembayaran berhasil");
       setAddedProducts([]);
       setPayment("");
       setSelectedCustomer(null);
@@ -155,26 +155,32 @@ export default function CashierDashboard() {
 
   const handleCompletePayment = () => {
     if (!user.data?.id) {
-      toast.error("Cashier data not found");
+      toast.error("Data kasir tidak ditemukan");
       return;
     }
 
     const saleDetails = addedProducts.map(product => ({
       productId: product.id,
-      quantity: product.quantity.toString(),
-      price: product.price ?? "0"
+      quantity: product.quantity,
+      price: product.price
     }));
 
     createSale.mutate({
       data: {
         sale: {
-          totalPrice: total.toString(),
+          totalPrice: total,
           userId: user.data.id,
           customerId: selectedCustomer?.id
         },
         saleDetails: saleDetails
       }
     });
+  };
+
+  const handlePayemntKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && payment && Number(parseRupiahToNumber(payment)) >= total) {
+      handlePaymentClick();
+    }
   };
 
   const handleCustomerKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -192,15 +198,25 @@ export default function CashierDashboard() {
     }
   };
 
+  const handlePaymentClick = () => {
+    if (!payment || Number(parseRupiahToNumber(payment)) < total) return;
+    setIsPaymentModalOpen(true);
+  };
+
+  const handleConfirmPayment = () => {
+    setIsPaymentModalOpen(false);
+    handleCompletePayment();
+  };
+
   return (
-    <div className="fixed inset-0 flex w-screen h-screen overflow-hidden bg-gray-100">
-      <div className="w-[70%] flex flex-col bg-white shadow-lg">
+    <div className="inset flex h-screen overflow-hidden bg-gray-100">
+      <div className="w-[67.5%] flex flex-col bg-white shadow-lg">
         <div className="bg-white z-20 p-6 pb-4 shadow-sm">
-          <h1 className="text-2xl font-bold mb-4 text-gray-800">Product Catalog</h1>
+          <h1 className="text-2xl font-bold mb-4 text-gray-800">Katalog Produk</h1>
           <div className="mb-3">
             <input
               type="text"
-              placeholder="Search products..."
+              placeholder="Cari produk..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               className="w-full p-3 border border-gray-200 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
@@ -208,8 +224,8 @@ export default function CashierDashboard() {
           </div>
         </div>
         <div className="flex-1 overflow-y-auto pr-2 scrollbar-thin">
-          <div className="px-6 pb-6 pt-2">
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 min-w-0">
+          <div className="px-6 pb-6 pt-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {sortedProducts?.inStock.map(product => (
                 <div key={product.id} className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-all p-4">
                   <div className="flex flex-col h-full justify-between">
@@ -218,14 +234,19 @@ export default function CashierDashboard() {
                       <p className="text-base sm:text-lg font-bold text-blue-600 break-all">
                         Rp.
                         {" "}
-                        {formatPrice(Number(product.price))}
+                        {numberFormat(product.price)}
+                      </p>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Stok:
+                        {" "}
+                        {numberFormat(product.stock)}
                       </p>
                     </div>
                     <button
                       onClick={() => handleAddProduct(product.id)}
                       className="mt-4 w-full py-2 bg-blue-600 text-white rounded-lg flex items-center justify-center hover:bg-blue-700 transition-colors"
                     >
-                      Add to Cart
+                      Tambah ke Keranjang
                     </button>
                   </div>
                 </div>
@@ -236,7 +257,7 @@ export default function CashierDashboard() {
                   <div className="col-span-full mt-8 mb-4">
                     <div className="flex items-center gap-4">
                       <hr className="flex-1 border-gray-200" />
-                      <span className="text-gray-500 text-sm font-medium">Out of Stock</span>
+                      <span className="text-gray-500 text-sm font-medium">Stok Habis</span>
                       <hr className="flex-1 border-gray-200" />
                     </div>
                   </div>
@@ -249,14 +270,19 @@ export default function CashierDashboard() {
                           <p className="text-base sm:text-lg font-bold text-blue-600 break-all">
                             Rp.
                             {" "}
-                            {formatPrice(Number(product.price))}
+                            {numberFormat(product.price)}
+                          </p>
+                          <p className="text-sm text-gray-600 mt-1">
+                            Stok:
+                            {" "}
+                            {product.stock}
                           </p>
                         </div>
                         <button
                           disabled
                           className="mt-4 w-full py-2 bg-gray-400 text-white rounded-lg cursor-not-allowed"
                         >
-                          Out of Stock
+                          Stok Habis
                         </button>
                       </div>
                     </div>
@@ -271,20 +297,22 @@ export default function CashierDashboard() {
             <div className="w-1/4">
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-2">
-                  <h2 className="text-gray-600">Cashier:</h2>
+                  <h2 className="text-gray-600">Kasir:</h2>
                   <p className="font-semibold text-gray-800">{user.data?.name}</p>
                 </div>
-                <button
-                  onClick={() => handleLogout.mutate()}
-                  className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
-                >
-                  Logout
-                </button>
+                <div className="bg-gray-50 p-2 rounded-lg space-y-1">
+                  <p className="text-xs text-gray-600 mt-1">Total Penjualan Hari Ini:</p>
+                  <p className="font-semibold text-gray-800">
+                    Rp.
+                    {" "}
+                    {numberFormat(todayStats.data?.TotalPrice?.totalPrice)}
+                  </p>
+                </div>
               </div>
             </div>
             <div className="w-3/4">
               <div className="flex justify-between items-center mb-2">
-                <h2 className="text-gray-600">Customer</h2>
+                <h2 className="text-gray-600">Pelanggan</h2>
                 <div className="flex gap-2">
                   {selectedCustomer && (
                     <button
@@ -292,7 +320,7 @@ export default function CashierDashboard() {
                       className="px-3 py-1 text-sm bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-1"
                     >
                       <span>✎</span>
-                      <span>Edit</span>
+                      <span>Ubah</span>
                     </button>
                   )}
                   <button
@@ -300,7 +328,7 @@ export default function CashierDashboard() {
                     className="px-3 py-1 text-sm bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 transition-colors flex items-center gap-1"
                   >
                     <span>+</span>
-                    <span>Add Customer</span>
+                    <span>Tambah Pelanggan</span>
                   </button>
                 </div>
               </div>
@@ -310,7 +338,7 @@ export default function CashierDashboard() {
                     {filteredCustomers?.length === 0
                       ? (
                           <div className="px-4 py-2 text-sm text-gray-500">
-                            No customers found
+                            Pelanggan tidak ditemukan
                           </div>
                         )
                       : (
@@ -345,7 +373,7 @@ export default function CashierDashboard() {
                       setSelectedCustomer(null);
                     }}
                     onKeyDown={handleCustomerKeyDown}
-                    placeholder="Search customer..."
+                    placeholder="Cari pelanggan..."
                     className="w-full p-2 pr-9 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                   {selectedCustomer && (
@@ -363,23 +391,23 @@ export default function CashierDashboard() {
         </div>
       </div>
 
-      <div className="w-[30%] min-w-[300px] flex flex-col bg-white border-l border-gray-200 shadow-lg">
+      <div className="w-[32.5%] min-w-[300px] flex flex-col bg-white border-l border-gray-200 shadow-lg">
         <div className="p-4 flex justify-between items-center">
-          <h2 className="text-xl font-bold text-gray-800">Shopping Cart</h2>
+          <h2 className="text-xl font-bold text-gray-800">Keranjang Belanja</h2>
           <button
             onClick={handleClearCart}
             className="px-3 py-1 text-sm bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors"
           >
-            Clear Cart
+            Kosongkan
           </button>
         </div>
         <div className="flex-1 overflow-y-auto pr-2 scrollbar-thin max-h-[330px]">
           <table className="w-full text-left text-sm">
             <thead className="bg-gray-50 sticky top-0">
               <tr>
-                <th className="border-b border-gray-200 px-3 py-2 text-gray-600 w-[35%]">Product</th>
-                <th className="border-b border-gray-200 px-3 py-2 text-gray-600 w-[35%]">Price</th>
-                <th className="border-b border-gray-200 px-3 py-2 text-gray-600 text-center w-[10%]">Qty</th>
+                <th className="border-b border-gray-200 px-3 py-2 text-gray-600 w-[35%]">Produk</th>
+                <th className="border-b border-gray-200 px-3 py-2 text-gray-600 w-[35%]">Harga</th>
+                <th className="border-b border-gray-200 px-3 py-2 text-gray-600 text-center w-[10%]">Jml</th>
                 <th className="border-b border-gray-200 px-3 py-2 text-gray-600 w-[20%]"></th>
               </tr>
             </thead>
@@ -390,7 +418,7 @@ export default function CashierDashboard() {
                   <td className="border-b border-gray-200 px-3 py-2 text-gray-800 text-sm">
                     Rp.
                     {" "}
-                    {formatPrice(Number(product.price))}
+                    {numberFormat(Number(product.price))}
                   </td>
                   <td className="border-b border-gray-200 px-3 py-2 text-center text-gray-800">{product.quantity}</td>
                   <td className="border-b border-gray-200 px-3 py-2">
@@ -427,37 +455,38 @@ export default function CashierDashboard() {
               <span className="font-bold text-lg text-gray-800">
                 Rp.
                 {" "}
-                {formatPrice(total)}
+                {numberFormat(total)}
               </span>
             </div>
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-600">
-                Payment Amount
+                Jumlah Pembayaran
               </label>
               <input
-                type="number"
+                type="text"
                 value={payment}
-                onChange={e => setPayment(e.target.value)}
+                onKeyDown={handlePayemntKeyDown}
+                onChange={e => setPayment(formatToRupiah(e.target.value))}
                 className="w-full p-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Enter payment amount"
+                placeholder="Masukkan jumlah pembayaran"
               />
             </div>
             {payment && (
               <div className="flex justify-between items-center bg-gray-50 p-3 rounded-lg">
-                <span className="font-semibold text-gray-600">Cashback:</span>
+                <span className="font-semibold text-gray-600">Kembalian:</span>
                 <span className={`font-bold ${cashback >= 0 ? "text-green-600" : "text-red-600"}`}>
                   Rp.
                   {" "}
-                  {formatPrice(Math.abs(cashback))}
+                  {numberFormat(Math.abs(cashback))}
                 </span>
               </div>
             )}
             <button
-              disabled={!payment || Number(payment) < total || createSale.status === "pending"}
-              onClick={handleCompletePayment}
+              disabled={!payment || Number(parseRupiahToNumber(payment)) < total || createSale.status === "pending"}
+              onClick={handlePaymentClick}
               className="w-full py-2 bg-blue-600 text-white rounded-lg disabled:bg-gray-400 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors"
             >
-              {createSale.status === "pending" ? "Processing..." : "Complete Payment"}
+              {createSale.status === "pending" ? "Memproses..." : "Selesaikan Pembayaran"}
             </button>
           </div>
         </div>
@@ -480,6 +509,15 @@ export default function CashierDashboard() {
           }}
         />
       )}
+      <PaymentConfirmationModal
+        isOpen={isPaymentModalOpen}
+        onClose={() => setIsPaymentModalOpen(false)}
+        onConfirm={handleConfirmPayment}
+        total={total}
+        payment={payment}
+        cashback={cashback}
+        customerName={selectedCustomer?.name}
+      />
     </div>
   );
 }

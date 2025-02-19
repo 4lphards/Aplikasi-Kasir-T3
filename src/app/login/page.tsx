@@ -11,12 +11,7 @@ export default function LoginPage() {
   const { mutate: login } = api.session.create.useMutation({
     onSuccess: (data) => {
       toast.success(`Login successful as ${data.level}`);
-      if (data.level === "admin") {
-        window.location.href = "/admin/dashboard";
-      }
-      if (data.level === "user") {
-        window.location.href = "/cashier/dashboard";
-      }
+      window.location.href = "/admin/dashboard";
     }, onError: (error) => {
       toast.error(error.message);
     }
@@ -30,7 +25,7 @@ export default function LoginPage() {
   return (
     <div className="flex justify-center items-center h-screen bg-white">
       <form onSubmit={handleLogin} className="bg-white p-8 rounded-lg shadow-lg w-96">
-        <h1 className="mb-8 text-3xl font-bold text-gray-900 text-center">Login</h1>
+        <h1 className="mb-8 text-3xl font-bold text-gray-900 text-center">Masuk</h1>
         <div className="mb-6">
           <label htmlFor="username" className="block text-gray-700 mb-2">Username</label>
           <input
@@ -55,7 +50,7 @@ export default function LoginPage() {
           type="submit"
           className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-300"
         >
-          Login
+          Masuk
         </button>
       </form>
     </div>

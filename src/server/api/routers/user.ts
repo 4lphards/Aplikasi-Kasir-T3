@@ -1,12 +1,13 @@
 import { users, userSchema } from "@/server/db/schema";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { hash } from "@node-rs/argon2";
 import { TRPCError } from "@trpc/server";
+import { z } from "zod";
 
 export const userRouter = createTRPCRouter({
   fetchAll: protectedProcedure.query(async ({ ctx }) => {
-    return ctx.db.select().from(users);
+    return ctx.db.select().from(users).where(eq(users.active, true));
   }),
   fetchById: protectedProcedure
     .input(userSchema.select.pick({ id: true }))
@@ -14,19 +15,19 @@ export const userRouter = createTRPCRouter({
       if (!input.id) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "User ID is required"
+          message: "ID User diperlukan!"
         });
       }
 
       const [user] = await ctx.db
         .select()
         .from(users)
-        .where(eq(users.id, input.id));
+        .where(and(eq(users.id, input.id), eq(users.active, true)));
 
       if (user === undefined) {
         throw new TRPCError({
           code: "NOT_FOUND",
-          message: "User not found"
+          message: "User tidak ditemukan!"
         });
       }
 
@@ -45,13 +46,13 @@ export const userRouter = createTRPCRouter({
       if (!input.username) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Username is required"
+          message: "Username diperlukan!"
         });
       }
       if (!input.password) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Password is required"
+          message: "Password diperlukan!"
         });
       }
 
@@ -63,7 +64,7 @@ export const userRouter = createTRPCRouter({
       if (user) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Username already exists"
+          message: "Username sudah digunakan!"
         });
       }
 
@@ -77,12 +78,36 @@ export const userRouter = createTRPCRouter({
       if (!input.id) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "User ID is required"
+          message: "Id User diperlukan!"
         });
       }
-      await ctx.db.delete(users).where(eq(users.id, input.id));
+      await ctx.db.update(users)
+        .set({
+          username: null,
+          active: false
+        }).where(eq(users.id, input.id));
+
       return true;
     }),
+  deleteBulk: protectedProcedure
+    .input(z.array(userSchema.select.pick({ id: true })))
+    .mutation(async ({ input, ctx }) => {
+      if (input.length === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "ID User diperlukan"
+        });
+      }
+
+      await ctx.db.update(users)
+        .set({
+          username: null,
+          active: false
+        }).where(inArray(users.id, input.map(i => i.id)));
+
+      return true;
+    }),
+
   update: protectedProcedure
     .input(
       userSchema.update.omit({
@@ -94,7 +119,7 @@ export const userRouter = createTRPCRouter({
       if (!input.id) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "User ID is required"
+          message: "ID User diperlukan!"
         });
       }
       if (input.password) {

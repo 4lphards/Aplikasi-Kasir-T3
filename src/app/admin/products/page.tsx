@@ -1,7 +1,7 @@
 "use client";
 
 import { api } from "@/trpc/react";
-import { formatPrice } from "@/utils/numberFormat";
+import { numberFormat } from "@/utils/numberFormat";
 import { useRouter } from "next/navigation";
 import React, { useEffect } from "react";
 import EditProductModal from "@/components/modals/EditProductModal";
@@ -11,8 +11,9 @@ import AddProductModal from "@/components/modals/AddProductModal";
 import { type z } from "zod";
 import { type productSchema } from "@/server/db/schema";
 
+const LOW_STOCK_THRESHOLD = 10;
+
 export default function ProductPage() {
-  const [currentPage, setCurrentPage] = React.useState(1);
   const [searchQuery, setSearchQuery] = React.useState("");
   const [selectedProducts, setSelectedProducts] = React.useState<number[]>([]);
   const [showEditPopup, setShowEditPopup] = React.useState<number | null>(null);
@@ -20,7 +21,6 @@ export default function ProductPage() {
   const [showDeleteBulkPopup, setShowDeleteBulkPopup] = React.useState<boolean>(false);
   const [showAddPopup, setShowAddPopup] = React.useState<boolean>(false);
   const [sortConfig, setSortConfig] = React.useState<{ key: keyof z.infer<typeof productSchema.select>, direction: "asc" | "desc" } | null>(null);
-  const itemsPerPage = 7;
   const router = useRouter();
 
   const user = api.session.read.useQuery(undefined, {
@@ -34,9 +34,6 @@ export default function ProductPage() {
     else if (user.isLoading) {
       return;
     }
-    else if (user.data?.level !== "admin") {
-      router.push("/cashier/dashboard");
-    }
   }, [user, router]);
 
   const { data: products, isLoading, refetch } = api.products.fetchAll.useQuery(undefined, {
@@ -49,21 +46,35 @@ export default function ProductPage() {
     if (!filteredProducts) return [];
     if (!sortConfig) return filteredProducts;
 
-    const sortProducts = (products: typeof filteredProducts, key: keyof z.infer<typeof productSchema.select>, direction: "asc" | "desc") => {
-      return (products ?? []).sort((a, b) => {
-        const aValue = a[key] as unknown as string | number;
-        const bValue = b[key] as unknown as string | number;
-        if (aValue > bValue) {
-          return direction === "asc" ? 1 : -1;
-        }
-        if (aValue < bValue) {
-          return direction === "asc" ? -1 : 1;
-        }
-        return 0;
-      });
-    };
-
-    return sortProducts(filteredProducts, sortConfig.key, sortConfig.direction);
+    return [...filteredProducts].sort((a, b) => {
+      switch (sortConfig.key) {
+        case "name":
+          return sortConfig.direction === "asc"
+            ? (a.name ?? "").localeCompare(b.name ?? "")
+            : (b.name ?? "").localeCompare(a.name ?? "");
+        case "price":
+          const priceA = Number(a.price);
+          const priceB = Number(b.price);
+          return sortConfig.direction === "asc"
+            ? priceA - priceB
+            : priceB - priceA;
+        case "stock":
+          const stockA = Number(a.stock);
+          const stockB = Number(b.stock);
+          return sortConfig.direction === "asc"
+            ? stockA - stockB
+            : stockB - stockA;
+        default:
+          const aValue = a[sortConfig.key];
+          const bValue = b[sortConfig.key];
+          if (aValue === bValue) return 0;
+          if (aValue === null) return 1;
+          if (bValue === null) return -1;
+          return sortConfig.direction === "asc"
+            ? aValue < bValue ? -1 : 1
+            : aValue < bValue ? 1 : -1;
+      }
+    });
   }, [filteredProducts, sortConfig]);
 
   const requestSort = (key: keyof z.infer<typeof productSchema.select>) => {
@@ -85,18 +96,6 @@ export default function ProductPage() {
   const totalProducts = products?.length;
   const lowStockProducts = products?.filter(p => Number(p.stock) < 10).length;
 
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const currentProducts = sortedProducts?.slice(startIndex, endIndex);
-
-  const handleNextPage = () => {
-    setCurrentPage(prevPage => prevPage + 1);
-  };
-
-  const handlePreviousPage = () => {
-    setCurrentPage(prevPage => Math.max(prevPage - 1, 1));
-  };
-
   const handleSelectProduct = (productId: number) => {
     setSelectedProducts(prevSelected =>
       prevSelected.includes(productId)
@@ -106,32 +105,28 @@ export default function ProductPage() {
   };
 
   return (
-    <main className="p-2 font-sans bg-gray-100 min-h-screen">
-      {/* Smaller header with less padding */}
-      <header className="mb-4 bg-gradient-to-r from-blue-600 to-purple-600 p-4 rounded-lg shadow-md">
-        <h1 className="text-2xl font-bold text-white text-center">
-          Product Management Dashboard
-        </h1>
+    <main className="h-screen p-4 bg-gradient-to-br from-gray-50 to-gray-100 overflow-hidden">
+      <header className="mb-4">
+        <h1 className="text-2xl font-bold text-gray-800">Manajemen Produk</h1>
+        <p className="text-sm text-gray-600">Kelola inventaris dan produk Anda</p>
       </header>
 
-      {/* More compact statistics cards */}
-      <section className="grid grid-cols-2 gap-4 mb-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
         <article className="p-3 bg-white rounded-lg shadow-md hover:shadow-lg transition-all duration-300 border-l-4 border-blue-500">
-          <h2 className="text-lg font-semibold text-gray-800">Total Products</h2>
+          <h2 className="text-lg font-semibold text-gray-800">Total Produk</h2>
           <p className="text-2xl font-bold text-blue-600">{totalProducts}</p>
         </article>
         <article className="p-3 bg-white rounded-lg shadow-md hover:shadow-lg transition-all duration-300 border-l-4 border-red-500">
-          <h2 className="text-lg font-semibold text-gray-800">Low Stock Alert</h2>
+          <h2 className="text-lg font-semibold text-gray-800">Peringatan Stok Rendah</h2>
           <p className="text-2xl font-bold text-red-600">{lowStockProducts}</p>
         </article>
-      </section>
+      </div>
 
-      {/* More compact search and actions bar */}
-      <div className="flex flex-wrap items-center gap-2 mb-4">
+      <div className="flex flex-wrap items-center gap-2 mb-3">
         <div className="relative flex-1 min-w-[200px]">
           <input
             type="text"
-            placeholder="Search products..."
+            placeholder="Cari produk..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="pl-8 pr-4 py-2 w-full border border-gray-200 rounded-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-200"
@@ -141,7 +136,6 @@ export default function ProductPage() {
           </svg>
         </div>
 
-        {/* Action buttons */}
         <div className="flex gap-2">
           {selectedProducts.length > 0 && (
             <button
@@ -151,7 +145,7 @@ export default function ProductPage() {
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
               </svg>
-              Delete Selected
+              Hapus Terpilih
             </button>
           )}
           <button
@@ -161,198 +155,182 @@ export default function ProductPage() {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
             </svg>
-            Add Product
+            Tambah Produk
           </button>
         </div>
       </div>
 
-      {/* Table section */}
-      <section className="bg-white rounded-lg shadow-md overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="w-8 px-1 py-2 text-xs font-semibold text-gray-500 uppercase">
-                <span className="sr-only">Select</span>
-              </th>
-              <th className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase">
-                ID
-                <button onClick={() => requestSort("id")}>
-                  {sortConfig?.key === "id" && sortConfig.direction === "asc"
-                    ? (
-                        <svg className="w-4 h-4 inline" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M5 10l5-5 5 5H5z" />
-                        </svg>
-                      )
-                    : (
-                        <svg className="w-4 h-4 inline" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M15 10l-5 5-5-5h10z" />
-                        </svg>
-                      )}
-                </button>
-              </th>
-              <th className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase">
-                Name
-                <button onClick={() => requestSort("name")}>
-                  {sortConfig?.key === "name" && sortConfig.direction === "asc"
-                    ? (
-                        <svg className="w-4 h-4 inline" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M5 10l5-5 5 5H5z" />
-                        </svg>
-                      )
-                    : (
-                        <svg className="w-4 h-4 inline" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M15 10l-5 5-5-5h10z" />
-                        </svg>
-                      )}
-                </button>
-              </th>
-              <th className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase">
-                Price
-                <button onClick={() => requestSort("price")}>
-                  {sortConfig?.key === "price" && sortConfig.direction === "asc"
-                    ? (
-                        <svg className="w-4 h-4 inline" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M5 10l5-5 5 5H5z" />
-                        </svg>
-                      )
-                    : (
-                        <svg className="w-4 h-4 inline" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M15 10l-5 5-5-5h10z" />
-                        </svg>
-                      )}
-                </button>
-              </th>
-              <th className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase">
-                Stock
-                <button onClick={() => requestSort("stock")}>
-                  {sortConfig?.key === "stock" && sortConfig.direction === "asc"
-                    ? (
-                        <svg className="w-4 h-4 inline" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M5 10l5-5 5 5H5z" />
-                        </svg>
-                      )
-                    : (
-                        <svg className="w-4 h-4 inline" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M15 10l-5 5-5-5h10z" />
-                        </svg>
-                      )}
-                </button>
-              </th>
-              <th className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200">
-            {currentProducts.map(product => (
-              <tr key={product.id} className="hover:bg-gray-50">
-                <td className="w-8 px-1 py-2 text-center">
-                  <input
-                    type="checkbox"
-                    checked={selectedProducts.includes(product.id)}
-                    onChange={() => handleSelectProduct(product.id)}
-                    className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                </td>
-                <td className="px-4 py-2 text-sm text-center">{product.id}</td>
-                <td className="px-4 py-2 text-sm text-center">{product.name}</td>
-                <td className="px-4 py-2 text-sm text-center">
-                  Rp.
-                  {formatPrice(Number(product.price))}
-                </td>
-                <td className="px-4 py-2 text-sm text-center">{Number(product.stock)}</td>
-                <td className="px-4 py-2 text-sm text-center">
-                  <div className="flex justify-center gap-1">
-                    <button
-                      onClick={() => setShowEditPopup(product.id)}
-                      className="px-2 py-1 text-xs bg-yellow-500 text-white rounded hover:bg-yellow-600"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => setShowDeletePopup(product.id)}
-                      className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </td>
+      {/* Change the height calculation to add bottom padding */}
+      <div className="h-[calc(100vh-270px)] bg-white rounded-lg shadow-md overflow-hidden mb-4">
+        <div className="overflow-x-auto h-full relative">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50 sticky top-0" style={{ zIndex: 1 }}>
+              <tr>
+                <th className="w-8 px-1 py-2 text-xs font-semibold text-gray-500 uppercase">
+                  <span className="sr-only">Pilih</span>
+                </th>
+                <th className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase">
+                  ID
+                  <button onClick={() => requestSort("id")}>
+                    {sortConfig?.key === "id" && sortConfig.direction === "asc"
+                      ? (
+                          <svg className="w-4 h-4 inline" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M5 10l5-5 5 5H5z" />
+                          </svg>
+                        )
+                      : (
+                          <svg className="w-4 h-4 inline" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M15 10l-5 5-5-5h10z" />
+                          </svg>
+                        )}
+                  </button>
+                </th>
+                <th className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase">
+                  Nama
+                  <button onClick={() => requestSort("name")}>
+                    {sortConfig?.key === "name" && sortConfig.direction === "asc"
+                      ? (
+                          <svg className="w-4 h-4 inline" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M5 10l5-5 5 5H5z" />
+                          </svg>
+                        )
+                      : (
+                          <svg className="w-4 h-4 inline" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M15 10l-5 5-5-5h10z" />
+                          </svg>
+                        )}
+                  </button>
+                </th>
+                <th className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase">
+                  Harga
+                  <button onClick={() => requestSort("price")}>
+                    {sortConfig?.key === "price" && sortConfig.direction === "asc"
+                      ? (
+                          <svg className="w-4 h-4 inline" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M5 10l5-5 5 5H5z" />
+                          </svg>
+                        )
+                      : (
+                          <svg className="w-4 h-4 inline" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M15 10l-5 5-5-5h10z" />
+                          </svg>
+                        )}
+                  </button>
+                </th>
+                <th className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase">
+                  Stok
+                  <button onClick={() => requestSort("stock")}>
+                    {sortConfig?.key === "stock" && sortConfig.direction === "asc"
+                      ? (
+                          <svg className="w-4 h-4 inline" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M5 10l5-5 5 5H5z" />
+                          </svg>
+                        )
+                      : (
+                          <svg className="w-4 h-4 inline" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M15 10l-5 5-5-5h10z" />
+                          </svg>
+                        )}
+                  </button>
+                </th>
+                <th className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase">Aksi</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
-
-      <div className="flex justify-between items-center mt-4 bg-white p-3 rounded-lg shadow-md text-sm">
-        <span className="text-gray-600">
-          Page
-          {" "}
-          {currentPage}
-          {" "}
-          of
-          {" "}
-          {Math.ceil((filteredProducts?.length ?? 0) / itemsPerPage)}
-        </span>
-        <div className="flex gap-1">
-          <button
-            onClick={() => setCurrentPage(1)}
-            className="px-3 py-1 rounded bg-gray-500 text-white text-sm hover:bg-gray-600 disabled:opacity-50"
-            disabled={currentPage <= 1}
-          >
-            First
-          </button>
-          <button
-            onClick={handlePreviousPage}
-            className="px-3 py-1 rounded bg-gray-500 text-white text-sm hover:bg-gray-600 disabled:opacity-50"
-            disabled={currentPage <= 1}
-          >
-            {"<"}
-          </button>
-          <button
-            onClick={handleNextPage}
-            className="px-3 py-1 rounded bg-gray-500 text-white text-sm hover:bg-gray-600 disabled:opacity-50"
-            disabled={endIndex >= (filteredProducts?.length ?? 0)}
-          >
-            {">"}
-          </button>
-          <button
-            onClick={() => setCurrentPage(Math.ceil((filteredProducts?.length ?? 0) / itemsPerPage))}
-            className="px-3 py-1 rounded bg-gray-500 text-white text-sm hover:bg-gray-600 disabled:opacity-50"
-            disabled={endIndex >= (filteredProducts?.length ?? 0)}
-          >
-            Last
-          </button>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {sortedProducts?.map((product) => {
+                const isLowStock = Number(product.stock) < LOW_STOCK_THRESHOLD;
+                return (
+                  <tr key={product.id} className="hover:bg-gray-50">
+                    <td className="w-8 px-1 py-2 text-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedProducts.includes(product.id)}
+                        onChange={() => handleSelectProduct(product.id)}
+                        className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    </td>
+                    <td className="px-4 py-2 text-sm text-center">{product.id}</td>
+                    <td className="px-4 py-2 text-sm text-center">{product.name}</td>
+                    <td className="px-4 py-2 text-sm text-center">
+                      Rp.
+                      {numberFormat(product.price)}
+                    </td>
+                    <td className="px-4 py-2 text-sm text-center">
+                      <span className={`${isLowStock ? "text-red-600 font-medium" : "text-gray-800"}`}>
+                        {Number(product.stock)}
+                        {isLowStock && (
+                          <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                            Stok Rendah
+                          </span>
+                        )}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 text-sm text-center">
+                      <div className="flex justify-center gap-1">
+                        <button
+                          onClick={() => setShowEditPopup(product.id)}
+                          className="px-2 py-1 text-xs bg-yellow-500 text-white rounded hover:bg-yellow-600"
+                        >
+                          Ubah
+                        </button>
+                        <button
+                          onClick={() => setShowDeletePopup(product.id)}
+                          className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+                        >
+                          Hapus
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
 
-      {showEditPopup !== null && (
-        <EditProductModal
-          productId={showEditPopup}
-          onClose={() => setShowEditPopup(null)}
-          refetch={refetch}
-        />
-      )}
-      {showDeletePopup !== null && (
-        <DeleteProductModal
-          productId={showDeletePopup}
-          onClose={() => setShowDeletePopup(null)}
-          refetch={refetch}
-        />
-      )}
-      {showDeleteBulkPopup && (
-        <DeleteBulkProductModal
-          productIds={selectedProducts}
-          onClose={() => {
-            setShowDeleteBulkPopup(false);
-            setSelectedProducts([]);
-          }}
-          refetch={refetch}
-        />
-      )}
-      {showAddPopup && (
-        <AddProductModal
-          onClose={() => setShowAddPopup(false)}
-          refetch={refetch}
-        />
-      )}
+      <div className="relative" style={{ zIndex: 50 }}>
+        {showEditPopup !== null && (
+          <EditProductModal
+            productId={showEditPopup}
+            onClose={() => {
+              setShowEditPopup(null);
+              void refetch(); // Add refetch after edit
+            }}
+            refetch={refetch}
+          />
+        )}
+        {showDeletePopup !== null && (
+          <DeleteProductModal
+            productId={showDeletePopup}
+            onClose={() => {
+              setShowDeletePopup(null);
+              void refetch(); // Add refetch after delete
+            }}
+            refetch={refetch}
+          />
+        )}
+        {showDeleteBulkPopup && (
+          <DeleteBulkProductModal
+            productIds={selectedProducts}
+            onClose={() => {
+              setShowDeleteBulkPopup(false);
+              setSelectedProducts([]);
+              void refetch(); // Add refetch after bulk delete
+            }}
+            refetch={refetch}
+          />
+        )}
+        {showAddPopup && (
+          <AddProductModal
+            onClose={() => {
+              setShowAddPopup(false);
+              void refetch(); // Add refetch after add
+            }}
+            refetch={refetch}
+          />
+        )}
+      </div>
     </main>
   );
 }

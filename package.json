@@ -27,6 +27,7 @@
     "@trpc/server": "^11.0.0-rc.446",
     "chart.js": "4.4.7",
     "cookie": "^1.0.2",
+    "date-fns": "^4.1.0",
     "drizzle-orm": "^0.39.3",
     "drizzle-zod": "^0.7.0",
     "fast-jwt": "^5.0.5",
