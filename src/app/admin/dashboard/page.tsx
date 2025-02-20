@@ -83,7 +83,7 @@ export default function Dashboard() {
           {user.data?.name}
           !
         </h1>
-        <p className="text-sm text-gray-600">Berikut adalah yang terjadi di toko Anda hari ini.</p>
+        <p className="text-sm text-gray-600">Berikut adalah yang terjadi di toko hari ini.</p>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
