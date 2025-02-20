@@ -71,7 +71,7 @@ export default function ReportsPage() {
         <article className="p-3 bg-white rounded-lg shadow-md hover:shadow-lg transition-all duration-300 border-l-4 border-yellow-500">
           <h2 className="text-lg font-semibold text-gray-800">Total Pelanggan</h2>
           <p className="text-2xl font-bold text-yellow-600">
-            {new Set(filteredSales?.map(sale => sale.customerId)).size}
+            {new Set(filteredSales?.map(sale => sale.customerId).filter(id => id !== null)).size}
           </p>
         </article>
       </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { formatToRupiah } from "@/utils/currencyFormat";
 import { useEffect, useState } from "react";
 
 interface PaymentConfirmationModalProps {
@@ -53,10 +54,7 @@ export function PaymentConfirmationModal({
             <div className="flex justify-between text-sm">
               <span className="text-gray-600">Total Belanja</span>
               <span className="font-medium text-gray-900">
-                {new Intl.NumberFormat("id-ID", {
-                  style: "currency",
-                  currency: "IDR"
-                }).format(total)}
+                {formatToRupiah(total.toString())}
               </span>
             </div>
 
@@ -68,10 +66,7 @@ export function PaymentConfirmationModal({
             <div className="flex justify-between text-sm">
               <span className="text-gray-600">Kembalian</span>
               <span className={`font-medium ${cashback >= 0 ? "text-green-600" : "text-red-600"}`}>
-                {new Intl.NumberFormat("id-ID", {
-                  style: "currency",
-                  currency: "IDR"
-                }).format(Math.abs(cashback))}
+                {formatToRupiah(cashback.toString())}
               </span>
             </div>
           </div>

@@ -78,7 +78,7 @@ export function EditCustomerModal({ isOpen, onClose, onSuccess, customerId, init
             <input
               type="tel"
               value={phone}
-              onChange={e => setPhone(e.target.value)}
+              onChange={e => setPhone(e.target.value.replace(/\D/g, ""))}
               className="w-full p-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               placeholder="Enter phone number"
             />

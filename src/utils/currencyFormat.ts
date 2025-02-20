@@ -3,7 +3,7 @@ export const formatToRupiah = (value: string): string => {
   const number = value.replace(/\D/g, "").replace(/^0+/, "");
   // Format with dots
   const formatted = number.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-  return formatted ? `Rp. ${formatted}` : "";
+  return formatted ? `Rp. ${formatted}` : "Rp. 0";
 };
 
 export const parseRupiahToNumber = (value: string): string => {
